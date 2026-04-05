@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="description" content="ACIT3855 Monitoring Statistics Dashboard" />
+    <script src="updateStats.js"></script>
+    <title>ACIT3855 - System Monitoring Dashboard</title>
+</head>
+
+<body>
+    <main id="main">
+        <div id="header">
+            <h1>System Monitoring Dashboard</h1>
+            <p>Real-time Event Monitoring & Analysis</p>
+        </div>
+        
+        <div id="last-updated-container">
+            <h5>Last update: <span id="last-updated-value">N/A</span></h5>
+        </div>
+        
+        <div id="messages"></div>
+        
+        <h2>Processing Service Statistics</h2>
+        <div id="statistics">
+            <div id="processing-container">
+                <h3>Processing Stats</h3>
+                <code id="processing-stats">Loading...</code>
+            </div>
+        </div>
+
+        <h2>Analyzer Service Statistics</h2>
+        <div id="analyzer-stats-container">
+            <div id="analyzer-stats-display">
+                <h3>Event Counts</h3>
+                <code id="analyzer-stats">Loading...</code>
+            </div>
+        </div>
+
+        <h2>Analyzer Events</h2>
+        <div id="analyzer-events">
+            <div id="performance-event-container">
+                <h3>Performance Event (Index 0)</h3>
+                <code id="event-performance">Loading...</code>
+            </div>
+            <div id="error-event-container">
+                <h3>Error Event (Index 0)</h3>
+                <code id="event-error">Loading...</code>
+            </div>
+        </div>
+
+        <h2>Service Health Status</h2>
+        <div id="health-status-container">
+            <div id="health-status-display">
+                <h3>Microservices Health</h3>
+                <code id="health-status">Loading...</code>
+                <p id="health-last-update">Last check: N/A</p>
+            </div>
+        </div>
+    </main>
+</body>
+
+</html>
