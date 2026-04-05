@@ -9,6 +9,9 @@ import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 import os
 
+# ============================================================================
+# CONFIGURATION & LOGGING SETUP
+# ============================================================================
 
 with open('/config/healthcheck_config.yml', 'r') as f:
     CONFIG = yaml.safe_load(f)
@@ -19,6 +22,7 @@ with open('/config/healthcheck_log_config.yml', 'r') as f:
 
 logger = logging.getLogger('basicLogger')
 
+# Extract configuration values
 DATASTORE_LOCATION = CONFIG['datastore']['location']
 HEALTH_CHECK_INTERVAL = CONFIG['health_check']['interval_seconds']
 TIMEOUT = CONFIG['health_check']['timeout_seconds']
@@ -26,17 +30,20 @@ SERVICES = CONFIG['services']
 
 logger.info("Health Check Service configuration loaded")
 
+# ============================================================================
+# CORE FUNCTIONS - SERVICE HEALTH CHECKING
+# ============================================================================
 
 def check_service_health(service_name, service_config):
     """
-    Check if a single service is healthy by calling its /health endpoint
+    Check if a single service is healthy by calling its /health endpoint.
     
     Args:
         service_name (str): Name of service (e.g., 'receiver')
         service_config (dict): Service config with 'url' key
     
     Returns:
-        str: 'Up' if service returns 200, 'Down' otherwise
+        str: Either "Up" or "Down"
     """
     try:
         response = requests.get(
@@ -59,9 +66,9 @@ def check_service_health(service_name, service_config):
         )
         return "Down"
     
-    except requests.exceptions.ConnectionError:
+    except requests.exceptions.ConnectionError as e:
         logger.warning(
-            f"✗ {service_name.upper()} service CONNECTION ERROR"
+            f"✗ {service_name.upper()} service CONNECTION ERROR: {e}"
         )
         return "Down"
     
@@ -72,22 +79,34 @@ def check_service_health(service_name, service_config):
         return "Down"
 
 
+# ============================================================================
+# CORE FUNCTIONS - STATUS UPDATE & PERSISTENCE
+# ============================================================================
+
 def update_health_status():
     """
     Poll all services and update the datastore with their current status.
-    This function is called periodically by the APScheduler.
+    
+    This function is:
+    - Called periodically by APScheduler (every 5 seconds)
+    - Responsible for checking each service's /health endpoint
+    - Updates the JSON datastore with results
+    - Logs each status change (requirement)
     """
     logger.info("=" * 50)
     logger.info("STARTING HEALTH CHECK CYCLE")
     logger.info("=" * 50)
     
+    # Load existing datastore or create default
     try:
         with open(DATASTORE_LOCATION, 'r') as f:
             health_status = json.load(f)
             logger.debug(f"Loaded existing datastore from {DATASTORE_LOCATION}")
     
     except FileNotFoundError:
-        logger.warning(f"Datastore not found, creating new file at {DATASTORE_LOCATION}")
+        logger.warning(
+            f"Datastore not found at {DATASTORE_LOCATION}, creating new"
+        )
         health_status = {
             service: {
                 "status": "Unknown",
@@ -106,25 +125,33 @@ def update_health_status():
             for service in SERVICES.keys()
         }
     
+    # Current timestamp for all checks in this cycle
     current_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     
+    # Check each service
     for service_name, service_config in SERVICES.items():
         status = check_service_health(service_name, service_config)
         
+        # Update the status dict
         health_status[service_name] = {
             "status": status,
             "last_check": current_time
         }
         
-        logger.info(f"RECORDED: {service_name.upper()} = {status} at {current_time}")
+        # REQUIREMENT: Log each time you record the status of a service
+        logger.info(
+            f"RECORDED: {service_name.upper():12} = {status:4} at {current_time}"
+        )
     
+    # Save back to datastore
     try:
+        # Ensure directory exists (idempotent)
         os.makedirs(os.path.dirname(DATASTORE_LOCATION), exist_ok=True)
         
         with open(DATASTORE_LOCATION, 'w') as f:
             json.dump(health_status, f, indent=2)
         
-        logger.debug(f"Datastore updated successfully")
+        logger.debug("Datastore saved successfully")
     
     except Exception as e:
         logger.error(f"Failed to write datastore: {e}")
@@ -134,10 +161,26 @@ def update_health_status():
     logger.info("=" * 50)
 
 
+# ============================================================================
+# API ENDPOINT - GET HEALTH STATUS
+# ============================================================================
+
 def get_health_status():
     """
     API Endpoint: GET /healthcheck/health-status
-    Returns current health status of all services
+    
+    Returns the current health status of all services.
+    
+    Response Format (as required by assignment):
+    {
+        "receiver": "Up",
+        "storage": "Down",
+        "processing": "Up",
+        "analyzer": "Up",
+        "last_update": "2026-03-22T11:12:23Z"
+    }
+    
+    REQUIREMENT: Log each time the health status is retrieved through the API
     """
     logger.info("API REQUEST: GET /health-status")
     
@@ -145,23 +188,28 @@ def get_health_status():
         with open(DATASTORE_LOCATION, 'r') as f:
             health_status = json.load(f)
         
+        # Transform from internal format to API format
         response = {}
         latest_timestamp = None
         
+        # Add each service's status
         for service_name, service_data in health_status.items():
             response[service_name] = service_data['status']
             
+            # Track the most recent check time
             if latest_timestamp is None or service_data['last_check'] > latest_timestamp:
                 latest_timestamp = service_data['last_check']
         
+        # Add last update timestamp
         response['last_update'] = latest_timestamp if latest_timestamp else "Unknown"
         
+        # REQUIREMENT: Log that API was called
         logger.info(f"API RESPONSE: {response}")
         
         return response, 200
     
     except FileNotFoundError:
-        logger.error("Datastore file not found")
+        logger.error("Datastore file not found - health check may not have run yet")
         return {"message": "Health status not available yet"}, 503
     
     except Exception as e:
@@ -169,10 +217,17 @@ def get_health_status():
         return {"message": "Error retrieving health status"}, 500
 
 
-
+# ============================================================================
+# SCHEDULER SETUP
+# ============================================================================
 
 def init_scheduler():
-    """Initialize and start the background scheduler"""
+    """
+    Initialize and start the background scheduler.
+    
+    The scheduler runs update_health_status() periodically
+    (every HEALTH_CHECK_INTERVAL seconds, which is 5 seconds from config).
+    """
     logger.info(f"Initializing scheduler with {HEALTH_CHECK_INTERVAL}s interval")
     
     try:
@@ -182,7 +237,7 @@ def init_scheduler():
             'interval',
             seconds=HEALTH_CHECK_INTERVAL,
             id='health_check_job',
-            name='Periodic health check'
+            name='Periodic health check of all services'
         )
         scheduler.start()
         logger.info("✓ Scheduler started successfully")
@@ -192,11 +247,17 @@ def init_scheduler():
         raise
 
 
+# ============================================================================
+# FLASK/CONNEXION APP SETUP
+# ============================================================================
 
-
+# Create Connexion app (wraps Flask)
 app = connexion.FlaskApp(__name__, specification_dir='')
+
+# Enable CORS so dashboard can call this API from different origin
 CORS(app.app)
 
+# Add the OpenAPI specification
 app.add_api(
     'openapi.yaml',
     base_path='/healthcheck',
@@ -204,17 +265,22 @@ app.add_api(
     validate_responses=True
 )
 
-
+# ============================================================================
+# MAIN ENTRY POINT
+# ============================================================================
 
 if __name__ == '__main__':
     logger.info("=" * 60)
-    logger.info("STARTING HEALTH CHECK SERVICE ON PORT 8120")
+    logger.info("STARTING HEALTH CHECK SERVICE")
+    logger.info(f"Listening on 0.0.0.0:{CONFIG['app']['port']}")
     logger.info("=" * 60)
     
+    # Start the background scheduler BEFORE the web server
     init_scheduler()
     
+    # Start the Flask/Connexion API server
+
     app.run(
         host='0.0.0.0',
-        port=CONFIG['app']['port'],
-        debug=False
+        port=CONFIG['app']['port']
     )

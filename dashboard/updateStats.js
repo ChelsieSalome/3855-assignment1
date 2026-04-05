@@ -2,6 +2,7 @@ const VM_IP = "172.169.248.121"
 
 const PROCESSING_STATS_API_URL = `http://${VM_IP}:8100/stats`
 
+
 const HEALTH_CHECK_API_URL = `http://${VM_IP}:8120/healthcheck/health-status`
 
 
@@ -83,7 +84,7 @@ const getStats = () => {
         updateCodeDiv(result, "processing-stats");
     });
     
-    
+  
     makeReq(ANALYZER_STATS_API_URL, (stats) => {
         updateCodeDiv(stats, "analyzer-stats");
         
@@ -94,6 +95,10 @@ const getStats = () => {
             );
             console.log(`Fetching random performance event at index ${randomPerfIndex}`);
             
+            // ✨ UPDATE HEADING WITH ACTUAL INDEX (not hardcoded 0)
+            document.getElementById("performance-event-heading").innerText = 
+                `Performance Event (Index ${randomPerfIndex})`;
+            
             const perfUrl = `${ANALYZER_PERFORMANCE_API_BASE}?index=${randomPerfIndex}`;
             makeReq(perfUrl, (result) => {
                 updateCodeDiv(result, "event-performance");
@@ -101,6 +106,8 @@ const getStats = () => {
         } else {
             document.getElementById("event-performance").innerText = 
                 "No performance events available";
+            document.getElementById("performance-event-heading").innerText = 
+                "Performance Event (No data)";
         }
         
         // DYNAMIC: Pick random error event index based on stats
@@ -110,6 +117,10 @@ const getStats = () => {
             );
             console.log(`Fetching random error event at index ${randomErrorIndex}`);
             
+            // ✨ UPDATE HEADING WITH ACTUAL INDEX (not hardcoded 0)
+            document.getElementById("error-event-heading").innerText = 
+                `Error Event (Index ${randomErrorIndex})`;
+            
             const errorUrl = `${ANALYZER_ERROR_API_BASE}?index=${randomErrorIndex}`;
             makeReq(errorUrl, (result) => {
                 updateCodeDiv(result, "event-error");
@@ -117,10 +128,12 @@ const getStats = () => {
         } else {
             document.getElementById("event-error").innerText = 
                 "No error events available";
+            document.getElementById("error-event-heading").innerText = 
+                "Error Event (No data)";
         }
     });
     
- 
+    
     makeReq(HEALTH_CHECK_API_URL, (result) => {
         const formatted = formatHealthStatus(result);
         document.getElementById("health-status").innerText = formatted;
