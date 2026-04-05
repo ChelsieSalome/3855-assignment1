@@ -1,19 +1,13 @@
 const VM_IP = "172.169.248.121"
 
 const PROCESSING_STATS_API_URL = `http://${VM_IP}:8100/stats`
-
-
-const HEALTH_CHECK_API_URL = `http://${VM_IP}:8120/healthcheck/health-status`
-
-
 const ANALYZER_STATS_API_URL = `http://${VM_IP}:5005/analyzer/stats`
 const ANALYZER_PERFORMANCE_API_BASE = `http://${VM_IP}:5005/analyzer/performance`
 const ANALYZER_ERROR_API_BASE = `http://${VM_IP}:5005/analyzer/error`
+const HEALTH_CHECK_API_URL = `http://${VM_IP}:8120/healthcheck/health-status`
 
 /**
  * Generic fetch function to retrieve data from API endpoints
- * @param {string} url - The API endpoint URL
- * @param {function} callback - Function to call with the result
  */
 const makeReq = (url, cb) => {
     fetch(url)
@@ -24,19 +18,17 @@ const makeReq = (url, cb) => {
             return res.json();
         })
         .then((result) => {
-            console.log("Received data from " + url + ": ", result);
+            console.log("✓ Received from " + url);
             cb(result);
         })
         .catch((error) => {
-            console.error("Error fetching from " + url + ":", error);
+            console.error("✗ Error fetching from " + url + ":", error);
             updateErrorMessages(error.message);
         });
 };
 
 /**
  * Update a code div with formatted JSON
- * @param {object} result - The data to display
- * @param {string} elemId - The element ID to update
  */
 const updateCodeDiv = (result, elemId) => {
     document.getElementById(elemId).innerText = JSON.stringify(result, null, 2);
@@ -44,60 +36,91 @@ const updateCodeDiv = (result, elemId) => {
 
 /**
  * Get current date and time as a formatted string
- * @returns {string} - Formatted date/time string
  */
 const getLocaleDateStr = () => (new Date()).toLocaleString();
 
+/**
+ * Update individual metrics from processing stats
+ */
+const updateProcessingMetrics = (stats) => {
+    document.getElementById("proc-perf").innerText = stats.num_performance_readings || 0;
+    document.getElementById("proc-error").innerText = stats.num_error_readings || 0;
+    document.getElementById("proc-cpu").innerText = (stats.max_cpu_reading || 0).toFixed(1) + "%";
+    document.getElementById("proc-severity").innerText = stats.max_severity_level || 0;
+};
 
 /**
- * Format health status for display
- * @param {object} result - The health status object
- * @returns {string} Formatted string with service statuses
+ * Update individual metrics from analyzer stats
  */
-const formatHealthStatus = (result) => {
-    let display = '';
-    
-    for (const [service, status] of Object.entries(result)) {
-        if (service === 'last_update') continue;
-        
-        const icon = status === 'Up' ? '✓ ' : '✗ ';
-        const displayName = service.charAt(0).toUpperCase() + service.slice(1);
-        display += `${icon}${displayName}: ${status}\n`;
+const updateAnalyzerMetrics = (stats) => {
+    document.getElementById("ana-perf").innerText = stats.num_performance_events || 0;
+    document.getElementById("ana-error").innerText = stats.num_error_events || 0;
+};
+
+/**
+ * Format and display health status with color-coded indicators
+ */
+const updateHealthStatus = (health_data) => {
+    const services_grid = document.getElementById("health-services");
+    services_grid.innerHTML = '';
+
+    const service_colors = {
+        'receiver': 'Receiver',
+        'storage': 'Storage',
+        'processing': 'Processing',
+        'analyzer': 'Analyzer'
+    };
+
+    for (const [service_key, service_name] of Object.entries(service_colors)) {
+        const status = health_data[service_key] || 'Unknown';
+        const status_class = status === 'Up' ? 'up' : (status === 'Down' ? 'down' : 'unknown');
+        const status_display = status === 'Up' ? '✓ Up' : (status === 'Down' ? '✗ Down' : '? Unknown');
+
+        const html = `
+            <div class="service-item ${status_class}">
+                <div class="service-indicator ${status_class}"></div>
+                <div class="service-name">${service_name}</div>
+                <div class="service-status ${status_class}">${status_display}</div>
+            </div>
+        `;
+        services_grid.innerHTML += html;
     }
-    
-    if (result.last_update) {
-        display += `\nLast checked: ${result.last_update}`;
-    }
-    
-    return display;
+
+    document.getElementById("health-last-update").innerText = 
+        health_data.last_update || "N/A";
 };
 
 /**
  * Main function to fetch all statistics and update the dashboard
  */
 const getStats = () => {
-    console.log("Updating statistics...");
+    console.log("🔄 Updating all statistics...");
     document.getElementById("last-updated-value").innerText = getLocaleDateStr();
     
-    // Fetch Processing Service Stats (UNCHANGED - your original code)
+    // ========================================================================
+    // PROCESSING SERVICE STATS
+    // ========================================================================
     makeReq(PROCESSING_STATS_API_URL, (result) => {
         updateCodeDiv(result, "processing-stats");
+        updateProcessingMetrics(result);
     });
     
-  
+    // ========================================================================
+    // ANALYZER SERVICE STATS + DYNAMIC EVENTS
+    // ========================================================================
     makeReq(ANALYZER_STATS_API_URL, (stats) => {
         updateCodeDiv(stats, "analyzer-stats");
+        updateAnalyzerMetrics(stats);
         
-        // DYNAMIC: Pick random performance event index based on stats
+        // Pick random performance event index
         if (stats.num_performance_events > 0) {
             const randomPerfIndex = Math.floor(
                 Math.random() * stats.num_performance_events
             );
-            console.log(`Fetching random performance event at index ${randomPerfIndex}`);
+            console.log(`📉 Fetching performance event at index ${randomPerfIndex}`);
             
-            // ✨ UPDATE HEADING WITH ACTUAL INDEX (not hardcoded 0)
             document.getElementById("performance-event-heading").innerText = 
-                `Performance Event (Index ${randomPerfIndex})`;
+                `📉 Performance Event (Index ${randomPerfIndex})`;
             
             const perfUrl = `${ANALYZER_PERFORMANCE_API_BASE}?index=${randomPerfIndex}`;
             makeReq(perfUrl, (result) => {
@@ -107,19 +130,18 @@ const getStats = () => {
             document.getElementById("event-performance").innerText = 
                 "No performance events available";
             document.getElementById("performance-event-heading").innerText = 
-                "Performance Event (No data)";
+                "📉 Performance Event (No data)";
         }
         
-        // DYNAMIC: Pick random error event index based on stats
+        // Pick random error event index
         if (stats.num_error_events > 0) {
             const randomErrorIndex = Math.floor(
                 Math.random() * stats.num_error_events
             );
-            console.log(`Fetching random error event at index ${randomErrorIndex}`);
+            console.log(`⚠️ Fetching error event at index ${randomErrorIndex}`);
             
-            // ✨ UPDATE HEADING WITH ACTUAL INDEX (not hardcoded 0)
             document.getElementById("error-event-heading").innerText = 
-                `Error Event (Index ${randomErrorIndex})`;
+                `⚠️ Error Event (Index ${randomErrorIndex})`;
             
             const errorUrl = `${ANALYZER_ERROR_API_BASE}?index=${randomErrorIndex}`;
             makeReq(errorUrl, (result) => {
@@ -129,42 +151,42 @@ const getStats = () => {
             document.getElementById("event-error").innerText = 
                 "No error events available";
             document.getElementById("error-event-heading").innerText = 
-                "Error Event (No data)";
+                "⚠️ Error Event (No data)";
         }
     });
     
-    
+    // ========================================================================
+    // HEALTH CHECK SERVICE
+    // ========================================================================
     makeReq(HEALTH_CHECK_API_URL, (result) => {
-        const formatted = formatHealthStatus(result);
-        document.getElementById("health-status").innerText = formatted;
-        document.getElementById("health-last-update").innerText = 
-            `Last check: ${result.last_update || 'N/A'}`;
+        console.log("💚 Health status received");
+        updateHealthStatus(result);
     });
 };
 
 /**
  * Display error messages to the user
- * @param {string} message - The error message to display
  */
 const updateErrorMessages = (message) => {
     const id = Date.now();
-    console.log("Creating error message:", id);
     
     const msg = document.createElement("div");
     msg.id = `error-${id}`;
-    msg.innerHTML = `<p>⚠️ Error occurred at ${getLocaleDateStr()}</p><code>${message}</code>`;
+    msg.innerHTML = `
+        <p>⚠️ Error at ${getLocaleDateStr()}</p>
+        <code>${message}</code>
+    `;
     
     const messagesDiv = document.getElementById("messages");
     messagesDiv.style.display = "block";
     messagesDiv.prepend(msg);
     
-    // Auto-remove error message after 7 seconds
+    // Auto-remove after 7 seconds
     setTimeout(() => {
         const elem = document.getElementById(`error-${id}`);
         if (elem) {
             elem.remove();
         }
-        // Hide messages container if empty
         if (messagesDiv.children.length === 0) {
             messagesDiv.style.display = "none";
         }
@@ -172,15 +194,13 @@ const updateErrorMessages = (message) => {
 };
 
 /**
- * Initialize the dashboard - called when DOM is fully loaded
+ * Initialize the dashboard
  */
 const setup = () => {
-    console.log("Dashboard initialized");
-    // Fetch stats immediately
+    console.log("🚀 Dashboard initialized");
     getStats();
-    // Update every 3 seconds (can adjust between 2-4 as per lab requirements)
     setInterval(() => getStats(), 3000);
 };
 
-// Wait for DOM to be fully loaded before setting up
+// Wait for DOM to be fully loaded
 document.addEventListener('DOMContentLoaded', setup);
