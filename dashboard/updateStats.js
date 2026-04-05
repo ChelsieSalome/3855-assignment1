@@ -40,6 +40,32 @@ const updateCodeDiv = (result, elemId) => {
 const getLocaleDateStr = () => (new Date()).toLocaleString();
 
 /**
+ * Convert ISO timestamp to "X seconds ago" format
+ * Makes it easier for analysts to see freshness at a glance
+ */
+const getTimeAgo = (isoTimestamp) => {
+    try {
+        const lastCheck = new Date(isoTimestamp);
+        const now = new Date();
+        const secondsAgo = Math.floor((now - lastCheck) / 1000);
+
+        if (secondsAgo < 0) {
+            return "just now";
+        } else if (secondsAgo < 60) {
+            return `${secondsAgo}s ago`;
+        } else if (secondsAgo < 3600) {
+            const minutes = Math.floor(secondsAgo / 60);
+            return `${minutes}m ago`;
+        } else {
+            const hours = Math.floor(secondsAgo / 3600);
+            return `${hours}h ago`;
+        }
+    } catch (e) {
+        return "unknown";
+    }
+};
+
+/**
  * Update individual metrics from processing stats
  */
 const updateProcessingMetrics = (stats) => {
@@ -59,6 +85,7 @@ const updateAnalyzerMetrics = (stats) => {
 
 /**
  * Format and display health status with color-coded indicators
+ * Now shows "X seconds ago" instead of timestamp
  */
 const updateHealthStatus = (health_data) => {
     const services_grid = document.getElementById("health-services");
@@ -86,8 +113,9 @@ const updateHealthStatus = (health_data) => {
         services_grid.innerHTML += html;
     }
 
-    document.getElementById("health-last-update").innerText = 
-        health_data.last_update || "N/A";
+   
+    const timeAgo = getTimeAgo(health_data.last_update);
+    document.getElementById("health-last-update").innerText = timeAgo;
 };
 
 /**
@@ -199,6 +227,8 @@ const updateErrorMessages = (message) => {
 const setup = () => {
     console.log("🚀 Dashboard initialized");
     getStats();
+    // Update every 3 seconds
+    // This also updates the "seconds ago" display in real-time
     setInterval(() => getStats(), 3000);
 };
 

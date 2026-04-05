@@ -33,7 +33,7 @@ services:
   analyzer:
     hostname: analyzer-service
     port: 5005
-    url: http://analyzer-service:5005/health
+    url: http://analyzer-service:5005/analyzer/health
 
 # Data persistence
 datastore:
